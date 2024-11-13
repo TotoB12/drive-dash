@@ -61,7 +61,7 @@ function handleOrientation(event) {
     }
 
     if (typeof heading === 'number' && !isNaN(heading)) {
-        map.setBearing(360 - heading);
+        map.setBearing(360 + heading);
     } else {
         console.warn('Heading information is not available.');
     }
