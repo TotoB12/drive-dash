@@ -12,17 +12,16 @@ const map = new mapboxgl.Map({
 });
 
 function requestOrientationPermission() {
+    console.log('Requesting orientation permission');
     if (typeof DeviceOrientationEvent !== 'undefined' && 
         typeof DeviceOrientationEvent.requestPermission === 'function') {
         DeviceOrientationEvent.requestPermission()
             .then(permissionState => {
                 if (permissionState === 'granted') {
-                    enableOrientationTracking();
                 }
             })
             .catch(console.error);
     } else {
-        enableOrientationTracking();
     }
 }
 
@@ -45,6 +44,6 @@ map.addControl(nav);
 map.addControl(fullscreen);
 
 map.on('load', () => {
-    geolocate.trigger();
     requestOrientationPermission();
+    geolocate.trigger();
 });
