@@ -15,11 +15,10 @@ const geolocate = new mapboxgl.GeolocateControl({
     trackUserLocation: true,
     showUserHeading: true,
     fitBoundsOptions: {
-      maxZoom: 17,
-      pitch: 60
+        maxZoom: 17,
+        pitch: 60
     }
 });
-
 const nav = new mapboxgl.NavigationControl();
 const fullscreen = new mapboxgl.FullscreenControl();
 
@@ -27,42 +26,88 @@ map.addControl(geolocate);
 map.addControl(nav);
 map.addControl(fullscreen);
 
-map.on('load', () => {
-    geolocate.trigger();
-});
+// Variables for device orientation
+let deviceOrientation = null;
+let isOrientationTracking = false;
 
-document.getElementById('track-orientation').addEventListener('click', () => {
-    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-        // For iOS 13+ devices
+// Function to request device orientation permission
+function requestOrientationPermission() {
+    if (typeof DeviceOrientationEvent !== 'undefined' && 
+        typeof DeviceOrientationEvent.requestPermission === 'function') {
+        // iOS 13+ requires permission
         DeviceOrientationEvent.requestPermission()
-        .then(permissionState => {
-            if (permissionState === 'granted') {
-                window.addEventListener('deviceorientation', handleOrientation, true);
-            } else {
-                alert('Permission not granted for Device Orientation');
-            }
-        })
-        .catch(console.error);
+            .then(permissionState => {
+                if (permissionState === 'granted') {
+                    enableOrientationTracking();
+                }
+            })
+            .catch(console.error);
     } else {
-        // Non-iOS devices
-        window.addEventListener('deviceorientation', handleOrientation, true);
-    }
-});
-
-function handleOrientation(event) {
-    let heading;
-
-    if (event.webkitCompassHeading) {
-        // For iOS devices
-        heading = event.webkitCompassHeading;
-    } else if (event.absolute && event.alpha !== null) {
-        // For Android devices
-        heading = event.alpha;
-    }
-
-    if (typeof heading === 'number' && !isNaN(heading)) {
-        map.setBearing(360 + heading);
-    } else {
-        console.warn('Heading information is not available.');
+        // Non iOS 13+ devices
+        enableOrientationTracking();
     }
 }
+
+// Function to enable orientation tracking
+function enableOrientationTracking() {
+    isOrientationTracking = true;
+    window.addEventListener('deviceorientation', handleOrientation);
+}
+
+// Function to handle orientation changes
+function handleOrientation(event) {
+    if (!isOrientationTracking) return;
+
+    let heading = null;
+
+    if (event.webkitCompassHeading) {
+        // iOS devices
+        heading = event.webkitCompassHeading;
+    } else if (event.alpha) {
+        // Android devices
+        heading = 360 - event.alpha;
+    }
+
+    if (heading !== null) {
+        // Update map bearing smoothly
+        map.easeTo({
+            bearing: heading,
+            duration: 100
+        });
+    }
+}
+
+// Add orientation toggle button
+const orientationButton = document.createElement('button');
+orientationButton.className = 'mapboxgl-ctrl-icon orientation-button';
+orientationButton.innerHTML = '🧭';
+orientationButton.style.cssText = `
+    position: absolute;
+    bottom: 100px;
+    right: 10px;
+    z-index: 1;
+    padding: 10px;
+    background: white;
+    border: none;
+    border-radius: 4px;
+    box-shadow: 0 0 0 2px rgba(0,0,0,0.1);
+    cursor: pointer;
+`;
+
+orientationButton.addEventListener('click', () => {
+    if (!isOrientationTracking) {
+        requestOrientationPermission();
+        orientationButton.style.backgroundColor = '#ccc';
+    } else {
+        isOrientationTracking = false;
+        window.removeEventListener('deviceorientation', handleOrientation);
+        orientationButton.style.backgroundColor = 'white';
+        // Reset map bearing to north
+        map.easeTo({
+            bearing: 0,
+            duration: 500
+        });
+    }
+});
+
+document.body.appendChild(orientationButton);
