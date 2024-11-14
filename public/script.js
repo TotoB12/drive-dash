@@ -5,7 +5,8 @@ const map = new mapboxgl.Map({
     style: 'mapbox://styles/totob1217/cm3f0b1qp000v01rv4evcaegr',
     center: [0, 0],
     zoom: 4,
-    pitch: 60
+    pitch: 60,
+    attributionControl: false
 });
 
 let userMarker = null;

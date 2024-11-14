@@ -30,6 +30,10 @@ body {
     width: 100%;
 }
 
+.mapboxgl-ctrl-logo {
+    display: none !important;
+}
+
 .recenter-button {
     position: absolute;
     bottom: 10px;
