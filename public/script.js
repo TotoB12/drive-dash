@@ -12,6 +12,7 @@ let userMarker = null;
 let userPosition = null;
 let isFollowing = false;
 let latestAddress = null;
+let latestMaxSpeed = null;
 
 const recenterButton = document.getElementById('recenterButton');
 
@@ -117,6 +118,16 @@ function updateRoadDisplay() {
     }
 }
 
+function updateSpeedLimitDisplay() {
+    const speedLimitSign = document.getElementById('speedLimitSign');
+    if (latestMaxSpeed !== null) {
+        speedLimitSign.src = `/images/speed-limit/us/${latestMaxSpeed}.svg`;
+        speedLimitSign.style.display = 'block';
+    } else {
+        speedLimitSign.style.display = 'none';
+    }
+}
+
 async function performApiCalls() {
     const position = getCurrentPosition();
     if (!position) {
@@ -137,5 +148,25 @@ async function performApiCalls() {
     if (locationData && locationData.osm_id) {
         const wayData = await fetchWayData(locationData.osm_id);
         console.log('Overpass data:', wayData);
+
+        if (wayData && wayData.elements && wayData.elements.length > 0) {
+            const wayElement = wayData.elements[0];
+            if (wayElement.tags && wayElement.tags.maxspeed) {
+                const maxspeedStr = wayElement.tags.maxspeed;
+                const maxspeedNum = parseInt(maxspeedStr.match(/\d+/));
+                if (!isNaN(maxspeedNum)) {
+                    latestMaxSpeed = maxspeedNum;
+                } else {
+                    latestMaxSpeed = null;
+                }
+            } else {
+                latestMaxSpeed = null;
+            }
+        } else {
+            latestMaxSpeed = null;
+        }
+    } else {
+        latestMaxSpeed = null;
     }
+    updateSpeedLimitDisplay();
 }

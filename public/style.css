@@ -30,6 +30,15 @@ body {
     pointer-events: none;
 }
 
+.speed-limit-sign {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 2;
+    max-width: 20vw;
+    max-height: 20vh;
+}
+
 .road-display {
     position: absolute;
     bottom: 10px;
