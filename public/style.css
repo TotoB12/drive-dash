@@ -11,19 +11,6 @@ body {
     width: 100%;
 }
 
-.orientation-button {
-    position: absolute;
-    bottom: 100px;
-    right: 10px;
-    z-index: 1;
-    padding: 10px;
-    background: white;
-    border: none;
-    border-radius: 4px;
-    box-shadow: 0 0 0 2px rgba(0,0,0,0.1);
-    cursor: pointer;
-}
-
 .recenter-button {
     position: absolute;
     bottom: 10px;
@@ -35,4 +22,10 @@ body {
     border-radius: 4px;
     box-shadow: 0 0 0 2px rgba(0,0,0,0.1);
     cursor: pointer;
+    transition: opacity 0.5s;
+}
+
+.recenter-button.invisible {
+    opacity: 0;
+    pointer-events: none;
 }

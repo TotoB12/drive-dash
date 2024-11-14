@@ -8,78 +8,32 @@ const map = new mapboxgl.Map({
     pitch: 60
 });
 
-let deviceOrientation = null;
-let isTracking = false;
-
 let userMarker = null;
 let userPosition = null;
+let isFollowing = false;
 
-const orientationButton = document.getElementById('orientationButton');
 const recenterButton = document.getElementById('recenterButton');
 
-function requestDeviceOrientation() {
-    if (typeof DeviceOrientationEvent !== 'undefined' && 
-        typeof DeviceOrientationEvent.requestPermission === 'function') {
-        // iOS 13+ devices need to request permission
-        DeviceOrientationEvent.requestPermission()
-            .then(response => {
-                if (response === 'granted') {
-                    enableDeviceOrientation();
-                }
-            })
-            .catch(console.error);
-    } else {
-        // Non iOS 13+ devices
-        enableDeviceOrientation();
-    }
-}
-
-function enableDeviceOrientation() {
-    isTracking = true;
-    window.addEventListener('deviceorientation', handleDeviceOrientation);
-}
-
-function handleDeviceOrientation(event) {
-    if (!isTracking) return;
-
-    let heading = null;
-
-    if (event.webkitCompassHeading) {
-        // iOS devices
-        heading = event.webkitCompassHeading;
-    } else if (event.alpha) {
-        // Android devices
-        heading = 360 - event.alpha;
-    }
-
-    if (heading !== null) {
-        map.easeTo({
-            bearing: heading,
-            duration: 500
-        });
-    }
-}
-
-orientationButton.addEventListener('click', () => {
-    if (!isTracking) {
-        requestDeviceOrientation();
-        orientationButton.style.backgroundColor = '#ccc';
-    } else {
-        isTracking = false;
-        window.removeEventListener('deviceorientation', handleDeviceOrientation);
-        orientationButton.style.backgroundColor = 'white';
+recenterButton.addEventListener('click', () => {
+    if (!isFollowing) {
+        if (userPosition) {
+            isFollowing = true;
+            recenterButton.classList.add('invisible');
+            map.flyTo({
+                center: [userPosition.longitude, userPosition.latitude],
+                zoom: 17,
+                pitch: 60
+            });
+        } else {
+            alert('User position not available yet.');
+        }
     }
 });
 
-recenterButton.addEventListener('click', () => {
-    if (userPosition) {
-        map.flyTo({
-            center: [userPosition.longitude, userPosition.latitude],
-            zoom: 17,
-            pitch: 60
-        });
-    } else {
-        alert('User position not available yet.');
+map.on('drag', () => {
+    if (isFollowing) {
+        isFollowing = false;
+        recenterButton.classList.remove('invisible');
     }
 });
 
@@ -101,6 +55,15 @@ function startTrackingUserPosition() {
                         .addTo(map);
                 } else {
                     userMarker.setLngLat([longitude, latitude]);
+                }
+
+                if (isFollowing) {
+                    map.easeTo({
+                        center: [longitude, latitude],
+                        zoom: 17,
+                        pitch: 60,
+                        duration: 500
+                    });
                 }
             },
             error => {
