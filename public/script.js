@@ -13,6 +13,7 @@ let userPosition = null;
 let isFollowing = false;
 let latestAddress = null;
 let latestMaxSpeed = null;
+let currentSpeedLimit = null;
 
 const recenterButton = document.getElementById('recenterButton');
 
@@ -120,12 +121,35 @@ function updateRoadDisplay() {
 
 function updateSpeedLimitDisplay() {
     const speedLimitSign = document.getElementById('speedLimitSign');
-    if (latestMaxSpeed !== null) {
-        speedLimitSign.src = `/images/speed-limit/us/${latestMaxSpeed}.svg`;
-        speedLimitSign.style.display = 'block';
-    } else {
-        speedLimitSign.style.display = 'none';
+
+    if (latestMaxSpeed === currentSpeedLimit) {
+        return;
     }
+
+    if (latestMaxSpeed !== null) {
+        if (currentSpeedLimit === null) {
+            speedLimitSign.src = `/images/speed-limit/us/${latestMaxSpeed}.svg`;
+            speedLimitSign.classList.remove('hidden'); // Fade in
+        } else {
+            speedLimitSign.addEventListener('transitionend', function handleTransitionEnd() {
+                speedLimitSign.src = `/images/speed-limit/us/${latestMaxSpeed}.svg`;
+                speedLimitSign.classList.remove('hidden');
+
+                speedLimitSign.removeEventListener('transitionend', handleTransitionEnd);
+            }, { once: true });
+
+            speedLimitSign.classList.add('hidden');
+        }
+    } else {
+        speedLimitSign.addEventListener('transitionend', function handleTransitionEnd() {
+            speedLimitSign.src = '';
+            speedLimitSign.removeEventListener('transitionend', handleTransitionEnd);
+        }, { once: true });
+
+        speedLimitSign.classList.add('hidden');
+    }
+
+    currentSpeedLimit = latestMaxSpeed;
 }
 
 async function performApiCalls() {

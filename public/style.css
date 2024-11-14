@@ -56,6 +56,12 @@ body {
     z-index: 2;
     max-width: 20vw;
     max-height: 20vh;
+    transition: opacity 0.5s ease-in-out;
+    opacity: 1;
+}
+
+.hidden {
+    opacity: 0;
 }
 
 .road-display {
