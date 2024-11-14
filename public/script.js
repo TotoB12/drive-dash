@@ -11,6 +11,7 @@ const map = new mapboxgl.Map({
 let userMarker = null;
 let userPosition = null;
 let isFollowing = false;
+let latestAddress = null;
 
 const recenterButton = document.getElementById('recenterButton');
 
@@ -39,7 +40,7 @@ map.on('drag', () => {
 
 map.on('load', () => {
     startTrackingUserPosition();
-    setInterval(performApiCalls, 2000);
+    setInterval(performApiCalls, 4000);
 });
 
 function startTrackingUserPosition() {
@@ -106,6 +107,16 @@ async function fetchWayData(osmId) {
     }
 }
 
+function updateRoadDisplay() {
+    const roadDisplay = document.getElementById('roadDisplay');
+    if (latestAddress && latestAddress.road) {
+        roadDisplay.textContent = latestAddress.road;
+        roadDisplay.style.display = 'block';
+    } else {
+        roadDisplay.style.display = 'none';
+    }
+}
+
 async function performApiCalls() {
     const position = getCurrentPosition();
     if (!position) {
@@ -115,6 +126,13 @@ async function performApiCalls() {
 
     const locationData = await fetchLocationData(position.latitude, position.longitude);
     console.log('Nominatim data:', locationData);
+
+    if (locationData && locationData.address) {
+        latestAddress = locationData.address;
+    } else {
+        latestAddress = null;
+    }
+    updateRoadDisplay();
 
     if (locationData && locationData.osm_id) {
         const wayData = await fetchWayData(locationData.osm_id);
