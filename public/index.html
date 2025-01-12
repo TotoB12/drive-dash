@@ -4,9 +4,13 @@
     <meta charset="UTF-8">
     <title>Drive Dash</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="style.css">
 
-    <link href='https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css' rel='stylesheet' />
+    <!-- Mapbox CSS -->
+    <link href="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css" rel="stylesheet" />
+    <!-- Threebox CSS -->
+    <link href="https://unpkg.com/threebox-plugin/dist/threebox.css" rel="stylesheet" />
+
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div id="map"></div>
@@ -14,7 +18,13 @@
     <div id="roadDisplay" class="road-display"></div>
     <button id="recenterButton" class="mapboxgl-ctrl-icon recenter-button">Recenter</button>
 
-    <script src='https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js'></script>
+    <!-- Mapbox GL JS -->
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js"></script>
+    <!-- Threebox JS -->
+    <script src="https://unpkg.com/three@0.141.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/threebox-plugin/dist/threebox.min.js"></script>
+    
+    <!-- Your script -->
     <script src="script.js"></script>
 </body>
 </html>
