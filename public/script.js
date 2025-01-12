@@ -1,5 +1,5 @@
 ////////////////////////////////////////////////////////////////////////////////
-// 1. Map initialization
+// 1. Map initialization (unchanged)
 ////////////////////////////////////////////////////////////////////////////////
 mapboxgl.accessToken =
     'pk.eyJ1IjoidG90b2IxMjE3IiwiYSI6ImNsbXo4NHdocjA4dnEya215cjY0aWJ1cGkifQ.OMzA6Q8VnHLHZP-P8ACBRw';
@@ -13,7 +13,6 @@ const map = new mapboxgl.Map({
     attributionControl: false
 });
 
-// Disable default Mapbox marker logo:
 map.on('load', () => {
     // Start tracking once style is fully loaded
     startTrackingUserPosition();
@@ -22,19 +21,27 @@ map.on('load', () => {
     setInterval(performApiCalls, 4000);
 });
 
-
 // ————————————————————————————————————————————————————————————————
-// 2. "Follow" Feature & Orientation Logic
+// 2. "Follow" Feature & Orientation Logic (unchanged except minor additions)
 // ————————————————————————————————————————————————————————————————
 let userPosition = null;  // updated by Geolocation
-let isFollowing = false;  
+let isFollowing = false;
 let latestAddress = null;
 let latestMaxSpeed = null;
 let currentSpeedLimit = null;
 
 // store the last positions to compute heading
-const MAX_POSITIONS = 5; 
+const MAX_POSITIONS = 5;
 let lastPositions = [];
+
+// NEW: We'll store extra info for speed calculation (time in ms).
+// Instead of an array of just { lat, lng }, store { lat, lng, timestamp }.
+function addPositionToHistory(lat, lng, timestamp) {
+    lastPositions.push({ lat, lng, timestamp });
+    if (lastPositions.length > MAX_POSITIONS) {
+        lastPositions.shift();
+    }
+}
 
 const recenterButton = document.getElementById('recenterButton');
 recenterButton.addEventListener('click', () => {
@@ -61,13 +68,9 @@ map.on('drag', () => {
     }
 });
 
-function addPositionToHistory(lat, lng) {
-    lastPositions.push({ lat, lng });
-    if (lastPositions.length > MAX_POSITIONS) {
-        lastPositions.shift();
-    }
-}
-
+// ————————————————————————————————————————————————————————————————
+// Heading calculation helpers (unchanged)
+// ————————————————————————————————————————————————————————————————
 function computeSmoothedBearing() {
     // Need at least 2 points
     if (lastPositions.length < 2) {
@@ -78,7 +81,6 @@ function computeSmoothedBearing() {
     return computeBearing(first.lat, first.lng, last.lat, last.lng);
 }
 
-// Basic formula for bearing (degrees)
 function computeBearing(lat1, lng1, lat2, lng2) {
     const toRad = x => x * Math.PI / 180.0;
     const toDeg = x => x * 180.0 / Math.PI;
@@ -94,93 +96,88 @@ function computeBearing(lat1, lng1, lat2, lng2) {
     return (θ + 360) % 360; // normalize
 }
 
+// NEW: Distance helper (Haversine or simpler lat/lng distance)
+function computeDistance(lat1, lng1, lat2, lng2) {
+    const R = 6371e3; // meters
+    const toRad = x => x * Math.PI / 180.0;
+    const φ1 = toRad(lat1);
+    const φ2 = toRad(lat2);
+    const Δφ = toRad(lat2 - lat1);
+    const Δλ = toRad(lng2 - lng1);
+
+    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+        Math.cos(φ1) * Math.cos(φ2) *
+        Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+}
 
 // ————————————————————————————————————————————————————————————————
-// 3. Threebox & 3D Car Model
+// 3. Threebox & 3D Car Model (unchanged)
 // ————————————————————————————————————————————————————————————————
-let tb;       // Threebox instance
-let userCar;  // The 3D model of the car
+let tb;
+let userCar;
 
-// Create a custom layer in Mapbox that uses Threebox
 const customLayer = {
     id: '3d-car-layer',
     type: 'custom',
     renderingMode: '3d',
 
-    // onAdd: create the Threebox scene & load your model
     onAdd: function (map, gl) {
-        // 1) Create the Threebox instance
-        tb = new Threebox(
-            map,
-            gl,
-            {
-                defaultLights: true
-                // you could pass other threebox options here
-            }
-        );
+        tb = new Threebox(map, gl, { defaultLights: true });
 
-        // 2) Load the car model from /models/mini.glb
-        // Note: some 3D models face +Z by default, so we might rotate x=90 to make it upright
         tb.loadObj(
             {
-                obj: '/models/mini.glb',   // path to your model
+                obj: '/models/mini.glb',
                 type: 'gltf',
-                scale: 7,                 // adjust scale to suit your needs
+                scale: 7,
                 units: 'meters',
-                rotation: { x: 90, y: 0, z: 0 } 
+                rotation: { x: 90, y: 0, z: 0 }
             },
             function (model) {
-                // Once loaded, store reference
                 userCar = model;
-                // Position the model at [0,0] initially or any default
                 userCar.setCoords([0, 0]);
-                // Add to the Threebox scene
                 tb.add(userCar);
             }
         );
     },
 
-    // render => called every frame. We must update Threebox scene
     render: function (gl, matrix) {
         tb.update();
     }
 };
 
-// Add the custom layer to the map so it can render in 3D
 map.on('style.load', () => {
     map.addLayer(customLayer);
 });
 
-// Accessor for current user position
 function getCurrentPosition() {
     return userPosition;
 }
 
-
 // ————————————————————————————————————————————————————————————————
-// 4. Geolocation & Car Heading
+// 4. Geolocation & Car Heading + Speed
 // ————————————————————————————————————————————————————————————————
 function startTrackingUserPosition() {
     if (!('geolocation' in navigator)) {
         alert('Geolocation is not supported by your browser');
         return;
     }
+
     navigator.geolocation.watchPosition(
         position => {
-            const { latitude, longitude } = position.coords;
+            const { latitude, longitude, speed } = position.coords;
+            const timestamp = position.timestamp;
             userPosition = { latitude, longitude };
 
-            // Add user position to history for heading calculation
-            addPositionToHistory(latitude, longitude);
+            // Add user position to history for heading AND speed calculation
+            addPositionToHistory(latitude, longitude, timestamp);
 
             // Rotate the model to the user heading & move it
             if (userCar) {
-                // Place the car at the new position
                 userCar.setCoords([longitude, latitude]);
-
-                // Always rotate the car to the computed bearing
                 const bearing = computeSmoothedBearing();
-                userCar.setRotation({ z: bearing }); 
+                userCar.setRotation({ z: bearing });
             }
 
             // If in follow mode, recenter map & rotate camera
@@ -194,6 +191,9 @@ function startTrackingUserPosition() {
                     duration: 500
                 });
             }
+
+            // NEW: Compute and update speed in mph
+            updateSpeedDisplay(position);
         },
         error => {
             console.error('Geolocation error:', error);
@@ -204,9 +204,42 @@ function startTrackingUserPosition() {
     );
 }
 
+// NEW: Function to compute and display speed.
+function updateSpeedDisplay(position) {
+    const speedDisplay = document.getElementById('speedDisplay');
+
+    // 1) If position.coords.speed is available (m/s):
+    let speedMps = position.coords.speed; // might be null or undefined
+    let speedMph = 0;
+
+    if (speedMps !== null && speedMps !== undefined && !isNaN(speedMps)) {
+        // Convert m/s to mph
+        speedMph = speedMps * 2.23694;
+    } else {
+        // 2) Fallback approach: use last positions with timestamps
+        if (lastPositions.length >= 2) {
+            const prev = lastPositions[lastPositions.length - 2];
+            const curr = lastPositions[lastPositions.length - 1];
+
+            const distMeters = computeDistance(prev.lat, prev.lng, curr.lat, curr.lng);
+            const timeSeconds = (curr.timestamp - prev.timestamp) / 1000.0;
+
+            if (timeSeconds > 0) {
+                const speedMpsFallback = distMeters / timeSeconds;
+                speedMph = speedMpsFallback * 2.23694;
+            }
+        }
+    }
+
+    // Round to 0 decimal or 1 decimal if you prefer
+    speedMph = Math.round(speedMph);
+
+    // Update display
+    speedDisplay.textContent = `${speedMph} mph`;
+}
 
 // ————————————————————————————————————————————————————————————————
-// 5. Overpass & Nominatim calls + UI updates
+// 5. Overpass & Nominatim calls + UI updates (unchanged)
 // ————————————————————————————————————————————————————————————————
 async function performApiCalls() {
     const position = getCurrentPosition();
@@ -216,8 +249,6 @@ async function performApiCalls() {
     }
 
     const { latitude, longitude } = position;
-
-    // 5.1 Reverse-geocode to get street name
     const locationData = await fetchLocationData(latitude, longitude);
     console.log('Nominatim data:', locationData);
 
@@ -228,7 +259,6 @@ async function performApiCalls() {
     }
     updateRoadDisplay();
 
-    // 5.2 Overpass to get speed limit
     if (locationData && locationData.osm_id) {
         const wayData = await fetchWayData(locationData.osm_id);
         console.log('Overpass data:', wayData);
@@ -255,7 +285,6 @@ async function performApiCalls() {
     updateSpeedLimitDisplay();
 }
 
-// Simple fetch to Nominatim
 async function fetchLocationData(lat, lon) {
     try {
         const response = await fetch(
@@ -268,7 +297,6 @@ async function fetchLocationData(lat, lon) {
     }
 }
 
-// Simple fetch to Overpass
 async function fetchWayData(osmId) {
     try {
         const response = await fetch(
@@ -299,13 +327,10 @@ function updateSpeedLimitDisplay() {
     }
 
     if (latestMaxSpeed !== null) {
-        // Fade from old to new
         if (currentSpeedLimit === null) {
-            // no sign => immediate show
             speedLimitSign.src = `/images/speed-limit/us/${latestMaxSpeed}.svg`;
             speedLimitSign.classList.remove('hidden');
         } else {
-            // sign => fade out, then change src, fade in
             speedLimitSign.addEventListener(
                 'transitionend',
                 function handleTransitionEnd() {
@@ -318,7 +343,6 @@ function updateSpeedLimitDisplay() {
             speedLimitSign.classList.add('hidden');
         }
     } else {
-        // Hide sign
         speedLimitSign.addEventListener(
             'transitionend',
             function handleTransitionEnd() {
