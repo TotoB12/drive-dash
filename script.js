@@ -13,9 +13,10 @@
     //   the Mini upright on the map's Z-up plane.
     // - Threebox `setRotation` rotates the outer map object. Keep it z-only;
     //   setting x/y there tilts the already-upright model onto its side.
-    // - The Mini's nose points toward local -X, so +90° maps compass north to it.
+    // - Threebox projects east/north onto negative world X/Y, so heading yaw
+    //   is compass bearing inverted around the north-facing +90° baseline.
     const MINI_MODEL_ROTATION = { x: 90, y: 0, z: 0 };
-    const MINI_FORWARD_YAW_OFFSET = 90;
+    const MINI_NORTH_YAW = 90;
     const API_INTERVAL_MS = 6000;
     const API_TIMEOUT_MS = 7000;
     const GPS_PROMPT_HIDE_MS = 8000;
@@ -328,7 +329,7 @@
     }
 
     function modelYawFromBearing(bearing) {
-        return normalizeBearing(bearing + MINI_FORWARD_YAW_OFFSET);
+        return normalizeBearing(MINI_NORTH_YAW - bearing);
     }
 
     function computeSmoothedBearing() {
