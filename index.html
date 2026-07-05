@@ -6,7 +6,8 @@
   <meta name="theme-color" content="#111827">
   <title>Drive Dash</title>
 
-  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+  <link href="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css" rel="stylesheet">
+  <link href="https://unpkg.com/threebox-plugin/dist/threebox.css" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -20,11 +21,9 @@
 
     <img id="speedLimitSign" class="speed-limit-sign hidden" src="images/speed-limit/us/blank.svg" alt="Speed limit unknown">
 
-    <div id="statusBanner" class="status-banner" role="status" aria-live="polite">
-      Initializing map…
-    </div>
+    <div id="statusBanner" class="status-banner hidden" role="status" aria-live="polite"></div>
 
-    <div id="roadDisplay" class="road-display" aria-live="polite"></div>
+    <div id="roadDisplay" class="road-display hidden" aria-live="polite"></div>
 
     <button id="recenterButton" class="recenter-button" type="button" disabled>
       Recenter
@@ -35,7 +34,9 @@
     <p class="noscript">Drive Dash needs JavaScript enabled to show the live map.</p>
   </noscript>
 
-  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script src="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js"></script>
+  <script src="https://unpkg.com/three@0.141.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/threebox-plugin/dist/threebox.min.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

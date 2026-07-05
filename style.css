@@ -207,11 +207,11 @@ body {
     stroke-linejoin: round;
 }
 
-.maplibregl-ctrl-bottom-right {
+.mapboxgl-ctrl-bottom-right {
     bottom: 76px;
 }
 
-.maplibregl-ctrl-bottom-left {
+.mapboxgl-ctrl-bottom-left {
     max-width: calc(100vw - 180px);
 }
 

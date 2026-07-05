@@ -1,11 +1,14 @@
 (() => {
     'use strict';
 
+    const MAPBOX_ACCESS_TOKEN = 'pk.eyJ1IjoidG90b2IxMjE3IiwiYSI6ImNsbXo4NHdocjA4dnEya215cjY0aWJ1cGkifQ.OMzA6Q8VnHLHZP-P8ACBRw';
+    const MAPBOX_STYLE = 'mapbox://styles/totob1217/cm3f0b1qp000v01rv4evcaegr';
     const DEFAULT_CENTER = [2.3522, 48.8566]; // Paris, used until GPS is available.
     const DEFAULT_ZOOM = 12;
     const FOLLOW_ZOOM = 17;
     const API_INTERVAL_MS = 6000;
     const API_TIMEOUT_MS = 7000;
+    const GPS_PROMPT_HIDE_MS = 8000;
     const MAX_POSITIONS = 6;
     const METERS_PER_SECOND_TO_MPH = 2.23694;
     const KPH_TO_MPH = 0.621371;
@@ -24,7 +27,9 @@
     };
 
     let map = null;
-    let userMarker = null;
+    let tb = null;
+    let userCar = null;
+    let fallbackMarker = null;
     let userPosition = null;
     let isFollowing = true;
     let latestRoadLabel = '';
@@ -37,6 +42,9 @@
 
     function supportsWebGL() {
         try {
+            if (window.mapboxgl?.supported) {
+                return window.mapboxgl.supported({ failIfMajorPerformanceCaveat: false });
+            }
             const canvas = document.createElement('canvas');
             return Boolean(
                 window.WebGLRenderingContext &&
@@ -47,24 +55,36 @@
         }
     }
 
-    function setStatus(message, variant = 'info') {
+    function setStatus(message, variant = 'info', options = {}) {
+        const { autoHideMs = null } = options;
+
         if (statusHideTimer) {
             window.clearTimeout(statusHideTimer);
             statusHideTimer = null;
         }
+
+        if (!message) {
+            elements.statusBanner.textContent = '';
+            elements.statusBanner.classList.add('hidden');
+            return;
+        }
+
         elements.statusBanner.textContent = message;
         elements.statusBanner.dataset.variant = variant;
         elements.statusBanner.classList.remove('hidden');
+
+        if (autoHideMs) {
+            statusHideTimer = window.setTimeout(() => {
+                elements.statusBanner.classList.add('hidden');
+                statusHideTimer = null;
+            }, autoHideMs);
+        }
     }
 
     function hideStatusSoon(delay = 2500) {
-        if (statusHideTimer) {
-            window.clearTimeout(statusHideTimer);
-        }
-        statusHideTimer = window.setTimeout(() => {
-            elements.statusBanner.classList.add('hidden');
-            statusHideTimer = null;
-        }, delay);
+        setStatus(elements.statusBanner.textContent, elements.statusBanner.dataset.variant || 'info', {
+            autoHideMs: delay
+        });
     }
 
     function createFallbackMap(message) {
@@ -75,14 +95,16 @@
                 <span>${message}</span>
             </div>
         `;
-        setStatus(message, 'warning');
+        setStatus(message, 'warning', { autoHideMs: 9000 });
     }
 
     function initMap() {
-        if (!window.maplibregl) {
-            createFallbackMap('Map library did not load. Check your connection and refresh.');
+        if (!window.mapboxgl) {
+            createFallbackMap('Mapbox did not load. Check your connection and refresh.');
             return;
         }
+
+        window.mapboxgl.accessToken = MAPBOX_ACCESS_TOKEN;
 
         if (!supportsWebGL()) {
             createFallbackMap('WebGL is disabled in this browser, so the map cannot render here. GPS and speed still work.');
@@ -90,31 +112,42 @@
         }
 
         try {
-            map = new maplibregl.Map({
+            map = new mapboxgl.Map({
                 container: elements.map,
-                style: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
+                style: MAPBOX_STYLE,
                 center: DEFAULT_CENTER,
                 zoom: DEFAULT_ZOOM,
-                pitch: 45,
+                pitch: 60,
+                bearing: 0,
+                antialias: true,
                 attributionControl: false
             });
 
-            map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-right');
-            map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-left');
+            map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), 'bottom-right');
+            map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-left');
 
-            map.on('load', () => {
-                setStatus('Waiting for GPS permission…');
+            map.once('load', () => {
+                setStatus('Allow location to start following your drive.', 'info', {
+                    autoHideMs: GPS_PROMPT_HIDE_MS
+                });
+                addMiniCooperLayer();
             });
 
-            map.on('dragstart', () => {
-                isFollowing = false;
-                updateRecenterButton();
+            map.on('style.load', addMiniCooperLayer);
+
+            ['dragstart', 'rotatestart', 'pitchstart'].forEach(eventName => {
+                map.on(eventName, () => {
+                    isFollowing = false;
+                    updateRecenterButton();
+                });
             });
 
             map.on('error', event => {
                 const message = event?.error?.message || 'Map error';
-                console.warn('MapLibre error:', message);
-                setStatus('Map data is having trouble loading. Retrying…', 'warning');
+                console.warn('Mapbox error:', message);
+                setStatus('Map data is having trouble loading. Retrying…', 'warning', {
+                    autoHideMs: 4500
+                });
             });
         } catch (error) {
             console.error('Map initialization failed:', error);
@@ -122,16 +155,85 @@
         }
     }
 
-    function createUserMarker() {
-        const markerElement = document.createElement('div');
-        markerElement.className = 'car-marker';
-        markerElement.setAttribute('aria-label', 'Current position');
-        markerElement.innerHTML = `
-            <svg viewBox="0 0 48 48" role="img" aria-hidden="true">
-                <path d="M24 3 40 42 24 34 8 42 24 3Z" />
-            </svg>
-        `;
-        return new maplibregl.Marker({ element: markerElement, rotationAlignment: 'map' });
+    const miniCooperLayer = {
+        id: 'mini-cooper-layer',
+        type: 'custom',
+        renderingMode: '3d',
+
+        onAdd(mapInstance, gl) {
+            if (!window.Threebox) {
+                console.warn('Threebox is not available; using the fallback position marker.');
+                return;
+            }
+
+            tb = new Threebox(mapInstance, gl, { defaultLights: true });
+            tb.loadObj(
+                {
+                    obj: 'models/mini.glb',
+                    type: 'gltf',
+                    scale: 7,
+                    units: 'meters',
+                    rotation: { x: 90, y: 0, z: 0 }
+                },
+                model => {
+                    userCar = model;
+                    const coords = userPosition
+                        ? [userPosition.longitude, userPosition.latitude]
+                        : DEFAULT_CENTER;
+                    userCar.setCoords(coords);
+                    userCar.setRotation({ z: computeSmoothedBearing() });
+                    tb.add(userCar);
+
+                    if (fallbackMarker) {
+                        fallbackMarker.remove();
+                        fallbackMarker = null;
+                    }
+                }
+            );
+        },
+
+        render() {
+            if (tb) {
+                tb.update();
+            }
+        }
+    };
+
+    function addMiniCooperLayer() {
+        if (!map || !map.isStyleLoaded?.() || map.getLayer(miniCooperLayer.id)) {
+            return;
+        }
+
+        try {
+            map.addLayer(miniCooperLayer);
+        } catch (error) {
+            console.warn('Mini Cooper layer could not be added:', error);
+            setStatus('The Mini Cooper model could not load, using a map marker instead.', 'warning', {
+                autoHideMs: 5000
+            });
+        }
+    }
+
+    function ensureFallbackMarker() {
+        if (!map || !window.mapboxgl || userCar) {
+            return null;
+        }
+
+        if (!fallbackMarker) {
+            const markerElement = document.createElement('div');
+            markerElement.className = 'car-marker';
+            markerElement.setAttribute('aria-label', 'Current position');
+            markerElement.innerHTML = `
+                <svg viewBox="0 0 48 48" role="img" aria-hidden="true">
+                    <path d="M24 3 40 42 24 34 8 42 24 3Z" />
+                </svg>
+            `;
+            fallbackMarker = new mapboxgl.Marker({
+                element: markerElement,
+                rotationAlignment: 'map'
+            }).addTo(map);
+        }
+        return fallbackMarker;
     }
 
     function updateRecenterButton() {
@@ -141,7 +243,7 @@
 
     function recenterOnUser({ animate = true } = {}) {
         if (!userPosition) {
-            setStatus('Waiting for a GPS fix before recentering…', 'warning');
+            setStatus('Waiting for a GPS fix before recentering…', 'warning', { autoHideMs: 4500 });
             return;
         }
 
@@ -149,7 +251,9 @@
         updateRecenterButton();
 
         if (!map) {
-            setStatus('GPS acquired. Map is unavailable in this browser.', 'warning');
+            setStatus('GPS acquired. Map is unavailable in this browser.', 'warning', {
+                autoHideMs: 5000
+            });
             return;
         }
 
@@ -242,6 +346,29 @@
         elements.speedValue.textContent = String(rounded);
     }
 
+    function updateVehiclePosition() {
+        if (!userPosition) {
+            return;
+        }
+
+        const coords = [userPosition.longitude, userPosition.latitude];
+        const bearing = computeSmoothedBearing();
+
+        if (userCar) {
+            userCar.setCoords(coords);
+            userCar.setRotation({ z: bearing });
+            return;
+        }
+
+        const marker = ensureFallbackMarker();
+        if (marker) {
+            marker.setLngLat(coords);
+            if (marker.setRotation) {
+                marker.setRotation(bearing);
+            }
+        }
+    }
+
     function updateUserPosition(position) {
         const { latitude, longitude } = position.coords;
         const timestamp = position.timestamp || Date.now();
@@ -250,23 +377,14 @@
         addPositionToHistory(latitude, longitude, timestamp);
         updateSpeedDisplay(position);
         updateRecenterButton();
-
-        if (map && window.maplibregl) {
-            if (!userMarker) {
-                userMarker = createUserMarker().setLngLat([longitude, latitude]).addTo(map);
-            } else {
-                userMarker.setLngLat([longitude, latitude]);
-            }
-            userMarker.setRotation(computeSmoothedBearing());
-        }
+        updateVehiclePosition();
 
         if (isFollowing) {
             recenterOnUser({ animate: lastPositions.length > 1 });
         }
 
         if (lastPositions.length === 1) {
-            setStatus('GPS acquired. Drive safely.', 'success');
-            hideStatusSoon();
+            setStatus('GPS acquired. Drive safely.', 'success', { autoHideMs: 2200 });
             performApiCalls();
         }
     }
@@ -277,27 +395,72 @@
         updateRecenterButton();
 
         const messages = {
-            1: 'Location permission was denied. Enable it to follow your drive.',
-            2: 'Location is temporarily unavailable. Retrying…',
-            3: 'Timed out while getting location. Retrying…'
+            1: 'Location permission is blocked. Enable it in your browser to follow your drive.',
+            2: 'Location is temporarily unavailable. I’ll keep retrying in the background.',
+            3: 'Still waiting for GPS. If your browser asks, allow location access.'
         };
-        setStatus(messages[error.code] || 'Unable to read location. Retrying…', 'warning');
+        setStatus(messages[error.code] || 'Unable to read location. I’ll keep retrying.', 'warning', {
+            autoHideMs: error.code === 1 ? 9000 : 6500
+        });
+    }
+
+    async function showInitialLocationHint() {
+        if (!('geolocation' in navigator)) {
+            setStatus('This browser does not support geolocation.', 'warning', { autoHideMs: 9000 });
+            return;
+        }
+
+        try {
+            if (navigator.permissions?.query) {
+                const permission = await navigator.permissions.query({ name: 'geolocation' });
+                if (permission.state === 'granted') {
+                    setStatus('Getting a GPS fix…', 'info', { autoHideMs: 5000 });
+                } else if (permission.state === 'denied') {
+                    setStatus('Location permission is blocked. Enable it in your browser to follow your drive.', 'warning', {
+                        autoHideMs: 9000
+                    });
+                } else {
+                    setStatus('Allow location to start following your drive.', 'info', {
+                        autoHideMs: GPS_PROMPT_HIDE_MS
+                    });
+                }
+
+                permission.onchange = () => {
+                    if (permission.state === 'granted') {
+                        setStatus('Location permission granted. Getting a GPS fix…', 'success', {
+                            autoHideMs: 3500
+                        });
+                    } else if (permission.state === 'denied') {
+                        setStatus('Location permission is blocked. Enable it in your browser to follow your drive.', 'warning', {
+                            autoHideMs: 9000
+                        });
+                    }
+                };
+                return;
+            }
+        } catch (error) {
+            console.warn('Permission status lookup failed:', error);
+        }
+
+        setStatus('Allow location to start following your drive.', 'info', {
+            autoHideMs: GPS_PROMPT_HIDE_MS
+        });
     }
 
     function startTrackingUserPosition() {
         if (!('geolocation' in navigator)) {
-            setStatus('This browser does not support geolocation.', 'warning');
+            setStatus('This browser does not support geolocation.', 'warning', { autoHideMs: 9000 });
             return;
         }
 
-        setStatus('Waiting for GPS permission…');
+        showInitialLocationHint();
         navigator.geolocation.watchPosition(
             updateUserPosition,
             handleGeolocationError,
             {
                 enableHighAccuracy: true,
                 maximumAge: 1000,
-                timeout: 10000
+                timeout: 12000
             }
         );
     }
@@ -451,8 +614,7 @@
             updateSpeedLimitDisplay();
         } catch (error) {
             console.warn('Road/speed-limit lookup failed:', error);
-            setStatus('Road data is temporarily unavailable.', 'warning');
-            hideStatusSoon(3500);
+            setStatus('Road data is temporarily unavailable.', 'warning', { autoHideMs: 3500 });
         } finally {
             apiCallInFlight = false;
         }
@@ -471,15 +633,18 @@
     startTrackingUserPosition();
     startRoadPolling();
 
-    // Tiny debug/test surface for local QA without exposing implementation globally.
     window.driveDash = {
         getState: () => ({
             hasMap: Boolean(map),
+            hasMiniCooper: Boolean(userCar),
+            hasFallbackMarker: Boolean(fallbackMarker),
             hasUserPosition: Boolean(userPosition),
             isFollowing,
             latestRoadLabel,
             latestSpeedLimitMph,
-            currentSpeedLimitMph
+            currentSpeedLimitMph,
+            statusVisible: !elements.statusBanner.classList.contains('hidden'),
+            statusText: elements.statusBanner.textContent
         }),
         parseMaxSpeedToMph
     };
