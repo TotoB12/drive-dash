@@ -63,6 +63,9 @@
             statusHideTimer = null;
         }
 
+        elements.statusBanner.classList.remove('auto-hide');
+        elements.statusBanner.style?.removeProperty?.('--status-auto-hide-ms');
+
         if (!message) {
             elements.statusBanner.textContent = '';
             elements.statusBanner.classList.add('hidden');
@@ -74,8 +77,13 @@
         elements.statusBanner.classList.remove('hidden');
 
         if (autoHideMs) {
+            elements.statusBanner.style?.setProperty?.('--status-auto-hide-ms', `${autoHideMs}ms`);
+            // Restart the CSS animation even when the same message is shown twice.
+            void elements.statusBanner.offsetWidth;
+            elements.statusBanner.classList.add('auto-hide');
             statusHideTimer = window.setTimeout(() => {
                 elements.statusBanner.classList.add('hidden');
+                elements.statusBanner.classList.remove('auto-hide');
                 statusHideTimer = null;
             }, autoHideMs);
         }

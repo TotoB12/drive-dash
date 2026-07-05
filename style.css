@@ -147,6 +147,22 @@ body {
     border-color: color-mix(in srgb, var(--success) 62%, transparent);
 }
 
+.status-banner.auto-hide {
+    animation: statusAutoHide var(--status-auto-hide-ms, 5000ms) ease forwards;
+}
+
+@keyframes statusAutoHide {
+    0%, 72% {
+        opacity: 1;
+        visibility: visible;
+    }
+
+    100% {
+        opacity: 0;
+        visibility: hidden;
+    }
+}
+
 .road-display {
     left: 50%;
     bottom: max(18px, env(safe-area-inset-bottom));
