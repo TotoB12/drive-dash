@@ -7,6 +7,13 @@
     const DEFAULT_CENTER = [2.3522, 48.8566]; // Paris, used until GPS is available.
     const DEFAULT_ZOOM = 12;
     const FOLLOW_ZOOM = 17;
+    // Analysis of /models/mini.glb: the model is Y-up, X is the car length,
+    // Z is width, and the Mini's nose points toward local -X. Threebox's map
+    // plane is X/Y with altitude on Z, so +90° on X keeps the car upright.
+    // A +90° yaw offset then maps compass bearing 0° (north) to local -X.
+    const MINI_UPRIGHT_ROTATION_X = 90;
+    const MINI_UPRIGHT_ROTATION_Y = 0;
+    const MINI_FORWARD_YAW_OFFSET = 90;
     const API_INTERVAL_MS = 6000;
     const API_TIMEOUT_MS = 7000;
     const GPS_PROMPT_HIDE_MS = 8000;
@@ -200,7 +207,11 @@
                     type: 'gltf',
                     scale: 7,
                     units: 'meters',
-                    rotation: { x: 90, y: 0, z: 0 }
+                    rotation: {
+                        x: MINI_UPRIGHT_ROTATION_X,
+                        y: MINI_UPRIGHT_ROTATION_Y,
+                        z: modelYawFromBearing(0)
+                    }
                 },
                 model => {
                     userCar = model;
@@ -209,7 +220,7 @@
                         ? [userPosition.longitude, userPosition.latitude]
                         : DEFAULT_CENTER;
                     userCar.setCoords(coords);
-                    userCar.setRotation({ z: computeSmoothedBearing() });
+                    applyVehicleRotation(computeSmoothedBearing());
                     tb.add(userCar);
                     mapInstance.triggerRepaint?.();
                 }
@@ -314,6 +325,14 @@
         }
     }
 
+    function normalizeBearing(degrees) {
+        return ((degrees % 360) + 360) % 360;
+    }
+
+    function modelYawFromBearing(bearing) {
+        return normalizeBearing(bearing + MINI_FORWARD_YAW_OFFSET);
+    }
+
     function computeSmoothedBearing() {
         if (lastPositions.length < 2) {
             return map?.getBearing?.() || 0;
@@ -380,6 +399,18 @@
         elements.speedValue.textContent = String(rounded);
     }
 
+    function applyVehicleRotation(bearing) {
+        if (!userCar) {
+            return;
+        }
+
+        userCar.setRotation({
+            x: MINI_UPRIGHT_ROTATION_X,
+            y: MINI_UPRIGHT_ROTATION_Y,
+            z: modelYawFromBearing(bearing)
+        });
+    }
+
     function updateVehiclePosition() {
         if (!userPosition) {
             return;
@@ -390,7 +421,7 @@
 
         if (userCar) {
             userCar.setCoords(coords);
-            userCar.setRotation({ z: bearing });
+            applyVehicleRotation(bearing);
             return;
         }
 
@@ -721,6 +752,7 @@
             statusVisible: !elements.statusBanner.classList.contains('hidden'),
             statusText: elements.statusBanner.textContent
         }),
-        parseMaxSpeedToMph
+        parseMaxSpeedToMph,
+        _debugModelYawFromBearing: modelYawFromBearing
     };
 })();
