@@ -23,6 +23,7 @@
         speedLimitSign: document.getElementById('speedLimitSign'),
         roadDisplay: document.getElementById('roadDisplay'),
         recenterButton: document.getElementById('recenterButton'),
+        locationButton: document.getElementById('locationButton'),
         statusBanner: document.getElementById('statusBanner')
     };
 
@@ -37,6 +38,9 @@
     let currentSpeedLimitMph = null;
     let apiTimer = null;
     let statusHideTimer = null;
+    let geoWatchId = null;
+    let locationRequestInFlight = false;
+    let locationPermissionState = 'unknown';
     let apiCallInFlight = false;
     const lastPositions = [];
 
@@ -135,9 +139,6 @@
             map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-left');
 
             map.once('load', () => {
-                setStatus('Allow location to start following your drive.', 'info', {
-                    autoHideMs: GPS_PROMPT_HIDE_MS
-                });
                 addMiniCooperLayer();
             });
 
@@ -412,36 +413,125 @@
         });
     }
 
-    async function showInitialLocationHint() {
-        if (!('geolocation' in navigator)) {
+    function setLocationButton({ visible, text = 'Enable location', disabled = false } = {}) {
+        elements.locationButton.textContent = text;
+        elements.locationButton.disabled = disabled;
+        elements.locationButton.classList.toggle('hidden', !visible);
+    }
+
+    function hasGeolocationSupport() {
+        return 'geolocation' in navigator;
+    }
+
+    function getGeoOptions() {
+        return {
+            enableHighAccuracy: true,
+            maximumAge: 1000,
+            timeout: 12000
+        };
+    }
+
+    function startPositionWatch() {
+        if (!hasGeolocationSupport() || geoWatchId !== null) {
+            return;
+        }
+
+        geoWatchId = navigator.geolocation.watchPosition(
+            updateUserPosition,
+            handleGeolocationError,
+            getGeoOptions()
+        );
+    }
+
+    function handleLocationRequestSuccess(position) {
+        locationRequestInFlight = false;
+        locationPermissionState = 'granted';
+        setLocationButton({ visible: false });
+        updateUserPosition(position);
+        startPositionWatch();
+    }
+
+    function handleLocationRequestError(error) {
+        locationRequestInFlight = false;
+        if (error.code === 1) {
+            locationPermissionState = 'denied';
+            setLocationButton({ visible: true, text: 'Retry location' });
+        } else {
+            setLocationButton({ visible: true, text: 'Try location again' });
+        }
+        handleGeolocationError(error);
+    }
+
+    function requestLocationFromUserGesture() {
+        if (!hasGeolocationSupport()) {
+            setLocationButton({ visible: false });
             setStatus('This browser does not support geolocation.', 'warning', { autoHideMs: 9000 });
             return;
         }
 
+        if (locationRequestInFlight) {
+            return;
+        }
+
+        locationRequestInFlight = true;
+        setLocationButton({ visible: true, text: 'Requesting…', disabled: true });
+        setStatus('Requesting location permission…', 'info', { autoHideMs: 5000 });
+
+        // getCurrentPosition is intentionally called from the button click handler.
+        // Several mobile browsers are much more reliable about showing the permission
+        // prompt when the request is tied to a user gesture.
+        navigator.geolocation.getCurrentPosition(
+            handleLocationRequestSuccess,
+            handleLocationRequestError,
+            getGeoOptions()
+        );
+    }
+
+    async function initializeLocationFlow() {
+        if (!hasGeolocationSupport()) {
+            setLocationButton({ visible: false });
+            setStatus('This browser does not support geolocation.', 'warning', { autoHideMs: 9000 });
+            return;
+        }
+
+        setLocationButton({ visible: true, text: 'Enable location' });
+
         try {
             if (navigator.permissions?.query) {
                 const permission = await navigator.permissions.query({ name: 'geolocation' });
+                locationPermissionState = permission.state;
+
                 if (permission.state === 'granted') {
+                    setLocationButton({ visible: false });
                     setStatus('Getting a GPS fix…', 'info', { autoHideMs: 5000 });
+                    startPositionWatch();
                 } else if (permission.state === 'denied') {
-                    setStatus('Location permission is blocked. Enable it in your browser to follow your drive.', 'warning', {
+                    setLocationButton({ visible: true, text: 'Retry location' });
+                    setStatus('Location permission is blocked. Tap Retry after enabling location in browser settings.', 'warning', {
                         autoHideMs: 9000
                     });
                 } else {
-                    setStatus('Allow location to start following your drive.', 'info', {
+                    setLocationButton({ visible: true, text: 'Enable location' });
+                    setStatus('Tap Enable location to start following your drive.', 'info', {
                         autoHideMs: GPS_PROMPT_HIDE_MS
                     });
                 }
 
                 permission.onchange = () => {
+                    locationPermissionState = permission.state;
                     if (permission.state === 'granted') {
+                        setLocationButton({ visible: false });
                         setStatus('Location permission granted. Getting a GPS fix…', 'success', {
                             autoHideMs: 3500
                         });
+                        startPositionWatch();
                     } else if (permission.state === 'denied') {
-                        setStatus('Location permission is blocked. Enable it in your browser to follow your drive.', 'warning', {
+                        setLocationButton({ visible: true, text: 'Retry location' });
+                        setStatus('Location permission is blocked. Tap Retry after enabling location in browser settings.', 'warning', {
                             autoHideMs: 9000
                         });
+                    } else {
+                        setLocationButton({ visible: true, text: 'Enable location' });
                     }
                 };
                 return;
@@ -450,27 +540,10 @@
             console.warn('Permission status lookup failed:', error);
         }
 
-        setStatus('Allow location to start following your drive.', 'info', {
+        setLocationButton({ visible: true, text: 'Enable location' });
+        setStatus('Tap Enable location to start following your drive.', 'info', {
             autoHideMs: GPS_PROMPT_HIDE_MS
         });
-    }
-
-    function startTrackingUserPosition() {
-        if (!('geolocation' in navigator)) {
-            setStatus('This browser does not support geolocation.', 'warning', { autoHideMs: 9000 });
-            return;
-        }
-
-        showInitialLocationHint();
-        navigator.geolocation.watchPosition(
-            updateUserPosition,
-            handleGeolocationError,
-            {
-                enableHighAccuracy: true,
-                maximumAge: 1000,
-                timeout: 12000
-            }
-        );
     }
 
     function buildRoadLabel(address = {}) {
@@ -636,9 +709,10 @@
     }
 
     elements.recenterButton.addEventListener('click', () => recenterOnUser());
+    elements.locationButton.addEventListener('click', requestLocationFromUserGesture);
 
     initMap();
-    startTrackingUserPosition();
+    initializeLocationFlow();
     startRoadPolling();
 
     window.driveDash = {
@@ -651,6 +725,10 @@
             latestRoadLabel,
             latestSpeedLimitMph,
             currentSpeedLimitMph,
+            locationPermissionState,
+            geoWatchActive: geoWatchId !== null,
+            locationButtonVisible: !elements.locationButton.classList.contains('hidden'),
+            locationButtonText: elements.locationButton.textContent,
             statusVisible: !elements.statusBanner.classList.contains('hidden'),
             statusText: elements.statusBanner.textContent
         }),

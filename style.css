@@ -79,7 +79,8 @@ body {
 .dash-panel,
 .status-banner,
 .road-display,
-.recenter-button {
+.recenter-button,
+.location-button {
     position: absolute;
     z-index: 2;
     border: 1px solid var(--panel-border);
@@ -197,6 +198,31 @@ body {
 .recenter-button:disabled {
     cursor: not-allowed;
     opacity: 0.48;
+}
+
+.location-button {
+    left: max(16px, env(safe-area-inset-left));
+    bottom: max(18px, env(safe-area-inset-bottom));
+    min-width: 148px;
+    padding: 13px 18px;
+    border-radius: 999px;
+    font: inherit;
+    font-weight: 800;
+    cursor: pointer;
+    color: #07111f;
+    background: linear-gradient(135deg, #ffffff, #bae6fd);
+    border-color: rgba(255, 255, 255, 0.72);
+    transition: opacity 180ms ease, transform 180ms ease, filter 180ms ease;
+}
+
+.location-button:hover:not(:disabled) {
+    transform: translateY(-1px);
+    filter: brightness(1.04);
+}
+
+.location-button:disabled {
+    cursor: progress;
+    opacity: 0.72;
 }
 
 .recenter-button.invisible,
