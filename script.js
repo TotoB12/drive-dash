@@ -23,7 +23,6 @@
         speedLimitSign: document.getElementById('speedLimitSign'),
         roadDisplay: document.getElementById('roadDisplay'),
         recenterButton: document.getElementById('recenterButton'),
-        locationButton: document.getElementById('locationButton'),
         statusBanner: document.getElementById('statusBanner')
     };
 
@@ -39,7 +38,7 @@
     let apiTimer = null;
     let statusHideTimer = null;
     let geoWatchId = null;
-    let locationRequestInFlight = false;
+    let initialLocationRequestInFlight = false;
     let locationPermissionState = 'unknown';
     let apiCallInFlight = false;
     const lastPositions = [];
@@ -413,12 +412,6 @@
         });
     }
 
-    function setLocationButton({ visible, text = 'Enable location', disabled = false } = {}) {
-        elements.locationButton.textContent = text;
-        elements.locationButton.disabled = disabled;
-        elements.locationButton.classList.toggle('hidden', !visible);
-    }
-
     function hasGeolocationSupport() {
         return 'geolocation' in navigator;
     }
@@ -443,58 +436,43 @@
         );
     }
 
-    function handleLocationRequestSuccess(position) {
-        locationRequestInFlight = false;
+    function handleInitialLocationSuccess(position) {
+        initialLocationRequestInFlight = false;
         locationPermissionState = 'granted';
-        setLocationButton({ visible: false });
         updateUserPosition(position);
         startPositionWatch();
     }
 
-    function handleLocationRequestError(error) {
-        locationRequestInFlight = false;
+    function handleInitialLocationError(error) {
+        initialLocationRequestInFlight = false;
         if (error.code === 1) {
             locationPermissionState = 'denied';
-            setLocationButton({ visible: true, text: 'Retry location' });
-        } else {
-            setLocationButton({ visible: true, text: 'Try location again' });
         }
         handleGeolocationError(error);
     }
 
-    function requestLocationFromUserGesture() {
-        if (!hasGeolocationSupport()) {
-            setLocationButton({ visible: false });
-            setStatus('This browser does not support geolocation.', 'warning', { autoHideMs: 9000 });
+    function requestInitialLocation() {
+        if (!hasGeolocationSupport() || initialLocationRequestInFlight) {
             return;
         }
 
-        if (locationRequestInFlight) {
-            return;
-        }
+        initialLocationRequestInFlight = true;
+        setStatus('Requesting location permission…', 'info', { autoHideMs: GPS_PROMPT_HIDE_MS });
 
-        locationRequestInFlight = true;
-        setLocationButton({ visible: true, text: 'Requesting…', disabled: true });
-        setStatus('Requesting location permission…', 'info', { autoHideMs: 5000 });
-
-        // getCurrentPosition is intentionally called from the button click handler.
-        // Several mobile browsers are much more reliable about showing the permission
-        // prompt when the request is tied to a user gesture.
+        // Match the original app behavior: request location immediately on page load
+        // so the browser permission dialog appears without requiring an in-page button.
         navigator.geolocation.getCurrentPosition(
-            handleLocationRequestSuccess,
-            handleLocationRequestError,
+            handleInitialLocationSuccess,
+            handleInitialLocationError,
             getGeoOptions()
         );
     }
 
     async function initializeLocationFlow() {
         if (!hasGeolocationSupport()) {
-            setLocationButton({ visible: false });
             setStatus('This browser does not support geolocation.', 'warning', { autoHideMs: 9000 });
             return;
         }
-
-        setLocationButton({ visible: true, text: 'Enable location' });
 
         try {
             if (navigator.permissions?.query) {
@@ -502,36 +480,29 @@
                 locationPermissionState = permission.state;
 
                 if (permission.state === 'granted') {
-                    setLocationButton({ visible: false });
                     setStatus('Getting a GPS fix…', 'info', { autoHideMs: 5000 });
                     startPositionWatch();
                 } else if (permission.state === 'denied') {
-                    setLocationButton({ visible: true, text: 'Retry location' });
-                    setStatus('Location permission is blocked. Tap Retry after enabling location in browser settings.', 'warning', {
+                    setStatus('Location permission is blocked. Enable it in browser/site settings, then reload.', 'warning', {
                         autoHideMs: 9000
                     });
                 } else {
-                    setLocationButton({ visible: true, text: 'Enable location' });
-                    setStatus('Tap Enable location to start following your drive.', 'info', {
-                        autoHideMs: GPS_PROMPT_HIDE_MS
-                    });
+                    requestInitialLocation();
                 }
 
                 permission.onchange = () => {
                     locationPermissionState = permission.state;
                     if (permission.state === 'granted') {
-                        setLocationButton({ visible: false });
                         setStatus('Location permission granted. Getting a GPS fix…', 'success', {
                             autoHideMs: 3500
                         });
                         startPositionWatch();
                     } else if (permission.state === 'denied') {
-                        setLocationButton({ visible: true, text: 'Retry location' });
-                        setStatus('Location permission is blocked. Tap Retry after enabling location in browser settings.', 'warning', {
+                        setStatus('Location permission is blocked. Enable it in browser/site settings, then reload.', 'warning', {
                             autoHideMs: 9000
                         });
                     } else {
-                        setLocationButton({ visible: true, text: 'Enable location' });
+                        requestInitialLocation();
                     }
                 };
                 return;
@@ -540,10 +511,7 @@
             console.warn('Permission status lookup failed:', error);
         }
 
-        setLocationButton({ visible: true, text: 'Enable location' });
-        setStatus('Tap Enable location to start following your drive.', 'info', {
-            autoHideMs: GPS_PROMPT_HIDE_MS
-        });
+        requestInitialLocation();
     }
 
     function buildRoadLabel(address = {}) {
@@ -709,7 +677,6 @@
     }
 
     elements.recenterButton.addEventListener('click', () => recenterOnUser());
-    elements.locationButton.addEventListener('click', requestLocationFromUserGesture);
 
     initMap();
     initializeLocationFlow();
@@ -727,8 +694,7 @@
             currentSpeedLimitMph,
             locationPermissionState,
             geoWatchActive: geoWatchId !== null,
-            locationButtonVisible: !elements.locationButton.classList.contains('hidden'),
-            locationButtonText: elements.locationButton.textContent,
+            initialLocationRequestInFlight,
             statusVisible: !elements.statusBanner.classList.contains('hidden'),
             statusText: elements.statusBanner.textContent
         }),
