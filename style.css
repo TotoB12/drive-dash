@@ -208,12 +208,10 @@ body {
     opacity: 0.48;
 }
 
-.recenter-button.is-following {
-    border-color: color-mix(in srgb, var(--success) 46%, var(--panel-border));
-}
-
+.recenter-button.invisible,
 .hidden {
     opacity: 0;
+    visibility: hidden;
     pointer-events: none;
     transform: translateY(6px) scale(0.98);
 }

@@ -3,6 +3,7 @@
 
     const MAPBOX_ACCESS_TOKEN = 'pk.eyJ1IjoidG90b2IxMjE3IiwiYSI6ImNsbXo4NHdocjA4dnEya215cjY0aWJ1cGkifQ.OMzA6Q8VnHLHZP-P8ACBRw';
     const MAPBOX_STYLE = 'mapbox://styles/totob1217/cm3f0b1qp000v01rv4evcaegr';
+    const MINI_MODEL_URL = new URL('/models/mini.glb', window.location.href).href;
     const DEFAULT_CENTER = [2.3522, 48.8566]; // Paris, used until GPS is available.
     const DEFAULT_ZOOM = 12;
     const FOLLOW_ZOOM = 17;
@@ -30,8 +31,8 @@
     let tb = null;
     let userCar = null;
     let userPosition = null;
-    let isFollowing = true;
-    let isProgrammaticCameraMove = false;
+    let isFollowing = false;
+    let miniCooperLoadState = 'idle';
     let latestRoadLabel = '';
     let latestSpeedLimitMph = null;
     let currentSpeedLimitMph = null;
@@ -150,17 +151,18 @@
             map.once('load', () => {
                 addMiniCooperLayer();
             });
+            map.once('idle', () => {
+                addMiniCooperLayer();
+            });
 
-            map.on('style.load', addMiniCooperLayer);
+            map.on('style.load', () => {
+                window.setTimeout(addMiniCooperLayer, 0);
+            });
 
-            ['dragstart', 'zoomstart', 'rotatestart', 'pitchstart', 'boxzoomstart'].forEach(eventName => {
+            ['dragstart', 'drag', 'zoomstart', 'rotatestart', 'pitchstart', 'boxzoomstart'].forEach(eventName => {
                 map.on(eventName, pauseFollowingForManualMapMove);
             });
-            map.on('movestart', event => {
-                if (event?.originalEvent) {
-                    pauseFollowingForManualMapMove(event);
-                }
-            });
+            map.on('movestart', pauseFollowingForManualMapMove);
 
             map.on('error', event => {
                 const message = event?.error?.message || 'Map error';
@@ -176,7 +178,7 @@
     }
 
     const miniCooperLayer = {
-        id: 'mini-cooper-layer',
+        id: '3d-car-layer',
         type: 'custom',
         renderingMode: '3d',
 
@@ -189,10 +191,12 @@
                 return;
             }
 
-            tb = new Threebox(mapInstance, gl, { defaultLights: true });
+            miniCooperLoadState = 'loading';
+            tb = new window.Threebox(mapInstance, gl, { defaultLights: true });
+            window.tb = tb;
             tb.loadObj(
                 {
-                    obj: 'models/mini.glb',
+                    obj: MINI_MODEL_URL,
                     type: 'gltf',
                     scale: 7,
                     units: 'meters',
@@ -200,12 +204,14 @@
                 },
                 model => {
                     userCar = model;
+                    miniCooperLoadState = 'ready';
                     const coords = userPosition
                         ? [userPosition.longitude, userPosition.latitude]
                         : DEFAULT_CENTER;
                     userCar.setCoords(coords);
                     userCar.setRotation({ z: computeSmoothedBearing() });
                     tb.add(userCar);
+                    mapInstance.triggerRepaint?.();
                 }
             );
         },
@@ -224,8 +230,10 @@
 
         try {
             map.addLayer(miniCooperLayer);
+            miniCooperLoadState = 'layer-added';
         } catch (error) {
             console.warn('Mini Cooper layer could not be added:', error);
+            miniCooperLoadState = 'failed';
             setStatus('The Mini Cooper model could not load.', 'warning', {
                 autoHideMs: 5000
             });
@@ -251,8 +259,9 @@
         });
     }
 
-    function pauseFollowingForManualMapMove() {
-        if (isProgrammaticCameraMove) {
+    function pauseFollowingForManualMapMove(event) {
+        const isManualMove = Boolean(event?.originalEvent) || event?.type === 'drag';
+        if (!isManualMove || !isFollowing) {
             return;
         }
 
@@ -263,9 +272,9 @@
     function updateRecenterButton() {
         const hasPosition = Boolean(userPosition);
         elements.recenterButton.disabled = !hasPosition;
-        elements.recenterButton.classList.toggle('is-following', isFollowing && hasPosition);
+        elements.recenterButton.classList.toggle('invisible', !hasPosition || isFollowing);
         elements.recenterButton.title = hasPosition
-            ? (isFollowing ? 'Following your current location' : 'Recenter on your current location')
+            ? 'Recenter on your current location'
             : 'Waiting for GPS before recentering';
     }
 
@@ -294,18 +303,8 @@
             duration: animate ? 650 : 0
         };
 
-        isProgrammaticCameraMove = true;
-        const clearProgrammaticMove = () => {
-            isProgrammaticCameraMove = false;
-        };
-        map.once?.('moveend', clearProgrammaticMove);
-        window.setTimeout(clearProgrammaticMove, animate ? 900 : 0);
-
-        if (animate) {
-            map.easeTo(camera);
-        } else {
-            map.jumpTo(camera);
-        }
+        const moveToUser = map.flyTo || map.easeTo || map.jumpTo;
+        moveToUser.call(map, camera);
     }
 
     function addPositionToHistory(latitude, longitude, timestamp) {
@@ -709,6 +708,7 @@
         getState: () => ({
             hasMap: Boolean(map),
             hasMiniCooper: Boolean(userCar),
+            miniCooperLoadState,
             hasFallbackMarker: false,
             hasUserPosition: Boolean(userPosition),
             isFollowing,
