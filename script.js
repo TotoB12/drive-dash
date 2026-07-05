@@ -29,9 +29,9 @@
     let map = null;
     let tb = null;
     let userCar = null;
-    let fallbackMarker = null;
     let userPosition = null;
     let isFollowing = true;
+    let isProgrammaticCameraMove = false;
     let latestRoadLabel = '';
     let latestSpeedLimitMph = null;
     let currentSpeedLimitMph = null;
@@ -131,9 +131,19 @@
                 pitch: 60,
                 bearing: 0,
                 antialias: true,
-                attributionControl: false
+                attributionControl: false,
+                cooperativeGestures: false,
+                dragPan: true,
+                scrollZoom: true,
+                boxZoom: true,
+                dragRotate: true,
+                keyboard: true,
+                doubleClickZoom: true,
+                touchZoomRotate: true,
+                touchPitch: true
             });
 
+            enableMapInteractions();
             map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), 'bottom-right');
             map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-left');
 
@@ -143,11 +153,13 @@
 
             map.on('style.load', addMiniCooperLayer);
 
-            ['dragstart', 'rotatestart', 'pitchstart'].forEach(eventName => {
-                map.on(eventName, () => {
-                    isFollowing = false;
-                    updateRecenterButton();
-                });
+            ['dragstart', 'zoomstart', 'rotatestart', 'pitchstart', 'boxzoomstart'].forEach(eventName => {
+                map.on(eventName, pauseFollowingForManualMapMove);
+            });
+            map.on('movestart', event => {
+                if (event?.originalEvent) {
+                    pauseFollowingForManualMapMove(event);
+                }
             });
 
             map.on('error', event => {
@@ -170,7 +182,10 @@
 
         onAdd(mapInstance, gl) {
             if (!window.Threebox) {
-                console.warn('Threebox is not available; using the fallback position marker.');
+                console.warn('Threebox is not available; the Mini Cooper model cannot render.');
+                setStatus('The Mini Cooper model could not load.', 'warning', {
+                    autoHideMs: 5000
+                });
                 return;
             }
 
@@ -191,11 +206,6 @@
                     userCar.setCoords(coords);
                     userCar.setRotation({ z: computeSmoothedBearing() });
                     tb.add(userCar);
-
-                    if (fallbackMarker) {
-                        fallbackMarker.remove();
-                        fallbackMarker = null;
-                    }
                 }
             );
         },
@@ -216,37 +226,47 @@
             map.addLayer(miniCooperLayer);
         } catch (error) {
             console.warn('Mini Cooper layer could not be added:', error);
-            setStatus('The Mini Cooper model could not load, using a map marker instead.', 'warning', {
+            setStatus('The Mini Cooper model could not load.', 'warning', {
                 autoHideMs: 5000
             });
         }
     }
 
-    function ensureFallbackMarker() {
-        if (!map || !window.mapboxgl || userCar) {
-            return null;
+    function enableMapInteractions() {
+        if (!map) {
+            return;
         }
 
-        if (!fallbackMarker) {
-            const markerElement = document.createElement('div');
-            markerElement.className = 'car-marker';
-            markerElement.setAttribute('aria-label', 'Current position');
-            markerElement.innerHTML = `
-                <svg viewBox="0 0 48 48" role="img" aria-hidden="true">
-                    <path d="M24 3 40 42 24 34 8 42 24 3Z" />
-                </svg>
-            `;
-            fallbackMarker = new mapboxgl.Marker({
-                element: markerElement,
-                rotationAlignment: 'map'
-            }).addTo(map);
+        [
+            'dragPan',
+            'scrollZoom',
+            'boxZoom',
+            'dragRotate',
+            'keyboard',
+            'doubleClickZoom',
+            'touchZoomRotate',
+            'touchPitch'
+        ].forEach(controlName => {
+            map[controlName]?.enable?.();
+        });
+    }
+
+    function pauseFollowingForManualMapMove() {
+        if (isProgrammaticCameraMove) {
+            return;
         }
-        return fallbackMarker;
+
+        isFollowing = false;
+        updateRecenterButton();
     }
 
     function updateRecenterButton() {
-        elements.recenterButton.disabled = !userPosition;
-        elements.recenterButton.classList.toggle('invisible', isFollowing && Boolean(userPosition));
+        const hasPosition = Boolean(userPosition);
+        elements.recenterButton.disabled = !hasPosition;
+        elements.recenterButton.classList.toggle('is-following', isFollowing && hasPosition);
+        elements.recenterButton.title = hasPosition
+            ? (isFollowing ? 'Following your current location' : 'Recenter on your current location')
+            : 'Waiting for GPS before recentering';
     }
 
     function recenterOnUser({ animate = true } = {}) {
@@ -273,6 +293,13 @@
             bearing,
             duration: animate ? 650 : 0
         };
+
+        isProgrammaticCameraMove = true;
+        const clearProgrammaticMove = () => {
+            isProgrammaticCameraMove = false;
+        };
+        map.once?.('moveend', clearProgrammaticMove);
+        window.setTimeout(clearProgrammaticMove, animate ? 900 : 0);
 
         if (animate) {
             map.easeTo(camera);
@@ -368,13 +395,9 @@
             return;
         }
 
-        const marker = ensureFallbackMarker();
-        if (marker) {
-            marker.setLngLat(coords);
-            if (marker.setRotation) {
-                marker.setRotation(bearing);
-            }
-        }
+        // Do not create the old 2D marker fallback. If the Mini is still loading,
+        // keep the map clean until the 3D model is ready.
+        addMiniCooperLayer();
     }
 
     function updateUserPosition(position) {
@@ -686,7 +709,7 @@
         getState: () => ({
             hasMap: Boolean(map),
             hasMiniCooper: Boolean(userCar),
-            hasFallbackMarker: Boolean(fallbackMarker),
+            hasFallbackMarker: false,
             hasUserPosition: Boolean(userPosition),
             isFollowing,
             latestRoadLabel,

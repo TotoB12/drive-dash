@@ -49,6 +49,11 @@ body {
     position: absolute;
     inset: 0;
     background: radial-gradient(circle at 50% 35%, #334155 0, #0f172a 62%);
+    touch-action: none;
+}
+
+#map canvas {
+    touch-action: none;
 }
 
 .map-fallback {
@@ -99,6 +104,7 @@ body {
     justify-content: center;
     padding: 12px 18px;
     border-radius: 22px;
+    pointer-events: none;
 }
 
 .speed-value {
@@ -126,6 +132,7 @@ body {
     opacity: 1;
     transform: translateY(0) scale(1);
     transition: opacity 180ms ease, transform 180ms ease;
+    pointer-events: none;
 }
 
 .status-banner {
@@ -137,6 +144,7 @@ body {
     border-radius: 999px;
     font-size: 15px;
     text-align: center;
+    pointer-events: none;
 }
 
 .status-banner[data-variant="warning"] {
@@ -175,6 +183,7 @@ body {
     text-align: center;
     text-overflow: ellipsis;
     white-space: nowrap;
+    pointer-events: none;
 }
 
 .recenter-button {
@@ -199,28 +208,14 @@ body {
     opacity: 0.48;
 }
 
-.recenter-button.invisible,
+.recenter-button.is-following {
+    border-color: color-mix(in srgb, var(--success) 46%, var(--panel-border));
+}
+
 .hidden {
     opacity: 0;
     pointer-events: none;
     transform: translateY(6px) scale(0.98);
-}
-
-.car-marker {
-    width: 42px;
-    height: 42px;
-    transform-origin: center;
-    filter: drop-shadow(0 8px 12px rgba(15, 23, 42, 0.35));
-}
-
-.car-marker svg {
-    display: block;
-    width: 100%;
-    height: 100%;
-    fill: var(--accent);
-    stroke: white;
-    stroke-width: 2.5;
-    stroke-linejoin: round;
 }
 
 .mapboxgl-ctrl-bottom-right {
