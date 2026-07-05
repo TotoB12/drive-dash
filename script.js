@@ -7,12 +7,14 @@
     const DEFAULT_CENTER = [2.3522, 48.8566]; // Paris, used until GPS is available.
     const DEFAULT_ZOOM = 12;
     const FOLLOW_ZOOM = 17;
-    // Analysis of /models/mini.glb: the model is Y-up, X is the car length,
-    // Z is width, and the Mini's nose points toward local -X. Threebox's map
-    // plane is X/Y with altitude on Z, so +90° on X keeps the car upright.
-    // A +90° yaw offset then maps compass bearing 0° (north) to local -X.
-    const MINI_UPRIGHT_ROTATION_X = 90;
-    const MINI_UPRIGHT_ROTATION_Y = 0;
+    // Analysis of /models/mini.glb and Threebox internals:
+    // - The GLB itself is Y-up; X is car length and Z is width.
+    // - Threebox `loadObj` rotation applies to the inner model, so x:90 stands
+    //   the Mini upright on the map's Z-up plane.
+    // - Threebox `setRotation` rotates the outer map object. Keep it z-only;
+    //   setting x/y there tilts the already-upright model onto its side.
+    // - The Mini's nose points toward local -X, so +90° maps compass north to it.
+    const MINI_MODEL_ROTATION = { x: 90, y: 0, z: 0 };
     const MINI_FORWARD_YAW_OFFSET = 90;
     const API_INTERVAL_MS = 6000;
     const API_TIMEOUT_MS = 7000;
@@ -207,11 +209,7 @@
                     type: 'gltf',
                     scale: 7,
                     units: 'meters',
-                    rotation: {
-                        x: MINI_UPRIGHT_ROTATION_X,
-                        y: MINI_UPRIGHT_ROTATION_Y,
-                        z: modelYawFromBearing(0)
-                    }
+                    rotation: MINI_MODEL_ROTATION
                 },
                 model => {
                     userCar = model;
@@ -404,11 +402,9 @@
             return;
         }
 
-        userCar.setRotation({
-            x: MINI_UPRIGHT_ROTATION_X,
-            y: MINI_UPRIGHT_ROTATION_Y,
-            z: modelYawFromBearing(bearing)
-        });
+        // z-only on the outer Threebox object: x/y are handled once by
+        // MINI_MODEL_ROTATION inside loadObj. Re-applying x/y here tilts the car.
+        userCar.setRotation({ z: modelYawFromBearing(bearing) });
     }
 
     function updateVehiclePosition() {
