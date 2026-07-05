@@ -2,40 +2,40 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#111827">
   <title>Drive Dash</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <!-- Mapbox CSS -->
-  <link href="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css" rel="stylesheet" />
-  <!-- Threebox CSS -->
-  <link href="https://unpkg.com/threebox-plugin/dist/threebox.css" rel="stylesheet" />
-
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div id="map"></div>
+  <main id="app" aria-label="Drive dashboard">
+    <div id="map" aria-label="Live map"></div>
 
-  <!-- Speed display -->
-  <div id="speedDisplay" class="speed-display">0 mph</div>
-  <!-- Speed-limit sign -->
-  <img id="speedLimitSign" class="speed-limit-sign hidden" src="" alt="Speed Limit">
-  <!-- Road name display -->
-  <div id="roadDisplay" class="road-display"></div>
-  <!-- Recenter button -->
-  <button id="recenterButton" class="mapboxgl-ctrl-icon recenter-button">Recenter</button>
+    <section class="dash-panel speed-panel" aria-live="polite" aria-label="Current speed">
+      <span id="speedValue" class="speed-value">--</span>
+      <span class="speed-unit">mph</span>
+    </section>
 
-  <!-- Mapbox GL JS -->
-  <script src="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js"></script>
-  <!-- Three.js + Threebox JS -->
-  <script src="https://unpkg.com/three@0.141.0/build/three.min.js"></script>
-  <script src="https://unpkg.com/threebox-plugin/dist/threebox.min.js"></script>
+    <img id="speedLimitSign" class="speed-limit-sign hidden" src="images/speed-limit/us/blank.svg" alt="Speed limit unknown">
 
-  <!-- KalmanJS (local file) -->
-  <script src="kalman.min.js"></script>
-  <!-- Tween.js (UMD build, local file) -->
-  <script src="tween.umd.js"></script>
+    <div id="statusBanner" class="status-banner" role="status" aria-live="polite">
+      Initializing map…
+    </div>
 
-  <!-- Your main script -->
+    <div id="roadDisplay" class="road-display" aria-live="polite"></div>
+
+    <button id="recenterButton" class="recenter-button" type="button" disabled>
+      Recenter
+    </button>
+  </main>
+
+  <noscript>
+    <p class="noscript">Drive Dash needs JavaScript enabled to show the live map.</p>
+  </noscript>
+
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
